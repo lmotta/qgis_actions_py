@@ -8,7 +8,7 @@ geomWkt = '[%geomToWKT(  $geometry  )%]'
 #
 nameModulus = "Action Add Landsat"
 layerSQL = "landsat_muni_%d" % feat_id
-fileStyle = '/home/lmotta/data/qgis_qml/landsat_muni.qml'
+fileStyle = '/home/lmotta/data/qgis_qml/muni_landsat.qml'
 geomName = 'geom'
 select = """(
 SELECT
