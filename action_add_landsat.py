@@ -1,7 +1,7 @@
 # Values from each features -- NOT CHANGE!
 #
 layer_id = '[% @layer_id %]'
-feat_id = [% "id1" %]
+feat_id = [% "geocodmu" %]
 geomWkt = '[%geomToWKT(  $geometry  )%]'
 #
 # CHANGE HERE for your target
@@ -23,7 +23,7 @@ FROM
 INNER JOIN 
   "municipio_ibge"
 ON
-  "municipio_ibge"."id1" = %d AND
+  "municipio_ibge"."geocodmu" = %d AND
   MbrIntersects("img_catalogo_landsat"."geom", "municipio_ibge"."geom") AND
   ST_Intersects("img_catalogo_landsat"."geom", "municipio_ibge"."geom")
 )""" % feat_id
