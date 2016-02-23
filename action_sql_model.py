@@ -26,13 +26,13 @@ nameModulus = "ACTION NAME"
 layerSQL = "LAYER NAME_%s" % feat_filter # Example for STRING field '%s'
 fileStyle = '/PATH/STYLE NAME.qml'
 geomName = 'GEOM NAME'
-select = """(
+select = """
 PUT HERE SQL CODE!
 ...
 "table"."feat_filter" = '%s'
 ...
 
-)""" % feat_filter
+""" % feat_filter
 #
 #
 # NOT CHANGE BELOW

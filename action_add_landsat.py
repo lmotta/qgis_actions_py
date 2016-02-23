@@ -26,7 +26,7 @@ nameModulus = "Action Add Landsat"
 layerSQL = "landsat_muni_%s" % feat_filter
 fileStyle = '/home/lmotta/data/qgis_qml/muni_landsat.qml'
 geomName = 'geom'
-select = """(
+select = """
 SELECT
   "img_catalogo_landsat"."id",
   "img_catalogo_landsat"."image",
@@ -42,13 +42,14 @@ ON
   "municipio_ibge"."geocodmu" = '%s' AND
   MbrIntersects("img_catalogo_landsat"."geom", "municipio_ibge"."geom") AND
   ST_Intersects("img_catalogo_landsat"."geom", "municipio_ibge"."geom")
-)""" % feat_filter
+""" % feat_filter
 #
 #
 # NOT CHANGE BELOW
 #
 from PyQt4.QtCore import QTimer, QFileInfo
 from PyQt4.QtGui import QColor, QApplication
+from PyQt4.QtSql import QSqlDatabase, QSqlQuery
 
 import qgis
 from qgis.core import QgsDataSourceURI, QgsMapLayerRegistry, QgsSimpleLineSymbolLayerV2, QgsGeometry, QgsCoordinateTransform
@@ -60,6 +61,7 @@ class AddLayerSQL():
     #
     self.mlr = QgsMapLayerRegistry.instance()
     self.canvas = qgis.utils.iface.mapCanvas()
+    self.msgBar = qgis.utils.iface.messageBar()
     #
     geom = QgsGeometry.fromWkt( sqlProperties[ 'geomWkt' ] )
     self.geomName = sqlProperties[ 'geomName' ]
@@ -104,14 +106,13 @@ class AddLayerSQL():
       if fileStyle.exists() and fileStyle.isFile():
         layer.loadNamedStyle( self.fileStyleLayerSQL )
 
-    msgBar = qgis.utils.iface.messageBar()
     if not layer.isValid():
       clip = QApplication.clipboard()
       clip.setText( self.select )
       msg = "Layer query '%s' not valid or no results. Query copied to Clipboard!" % self.nameLayerSQL
-      msgBar.pushMessage( self.nameModulus, msg, QgsMessageBar.WARNING, 5 )
+      self.msgBar.pushMessage( self.nameModulus, msg, QgsMessageBar.WARNING, 5 )
     else:
-      msgBar.pushMessage( self.nameModulus, "Added %s" % self.nameLayerSQL, QgsMessageBar.INFO, 3 )
+      self.msgBar.pushMessage( self.nameModulus, "Added %s" % self.nameLayerSQL, QgsMessageBar.INFO, 3 )
       addStyle()
       self.mlr.addMapLayer( layer )
 
@@ -119,9 +120,38 @@ class AddLayerSQL():
     self._removeHighlight( 2 )
 
   def addLayer(self):
+    def existFeatures():
+      isOk = True
+      msgErroDB = "Error ready database '%s'" % uri.database() 
+      drive = qdrives[ name ]
+      db = QSqlDatabase.addDatabase( drive )
+      if not uri.host() == '':
+        db.setHostName( uri.host() )
+        db.setPort( int( uri.port() ) )
+        db.setUserName( uri.username() )
+        db.setPassword( uri.password() )
+      db.setDatabaseName( uri.database() )
+      isOk = db.open()
+      if not isOk:
+        return ( isOk, msgErroDB)
+      query = QSqlQuery( db )
+      isOk = query.exec_(  self.select )
+      if not isOk:
+        return ( isOk, msgErroDB)
+      bReturn = query.first()
+      db.close()
+
+      return ( isOk, bReturn )
+
+    qdrives = { 'postgres': 'QPSQL', 'spatialite': 'QSPATIALITE' }
     schema = sql = keyCol = table = ''
     prov = self.layerSrc.dataProvider()
     name =  prov.name()
+    if not name in qdrives.keys():
+      msg = "Provider '%s' of layer '%s' is not supported!" % ( name, self.layerSrc.name() )
+      self.msgBar.pushMessage( self.nameModulus, msg, QgsMessageBar.WARNING, 5 )
+      return
+
     uriSrc = QgsDataSourceURI( prov.dataSourceUri() )
     uri = QgsDataSourceURI()
     if uriSrc.host() == '':
@@ -131,6 +161,15 @@ class AddLayerSQL():
       uri.setConnection( uriSrc.host(), uriSrc.port(), uriSrc.database(), uriSrc.username(), uriSrc.password() )
       keyCol = '_uid_'
       table = "( SELECT row_number() over () AS _uid_,* FROM ( %s ) AS _subq_1_ )" % self.select
+
+    ( isOk, result ) = existFeatures()
+    if not isOk:
+      self.msgBar.pushMessage( self.nameModulus, result, QgsMessageBar.WARNING, 5 )
+      return
+    if not result:
+      msg = "Not found result for query '%s'!" % self.nameLayerSQL
+      self.msgBar.pushMessage( self.nameModulus, msg, QgsMessageBar.WARNING, 5 )
+      return
 
     uri.setDataSource( schema, table, self.geomName, sql, keyCol )
     self._addLayer( QgsVectorLayer( uri.uri(), self.nameLayerSQL, name ) )
