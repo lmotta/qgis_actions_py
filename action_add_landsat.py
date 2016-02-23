@@ -108,10 +108,7 @@ class AddLayerSQL():
     if not layer.isValid():
       clip = QApplication.clipboard()
       clip.setText( self.select )
-      msg = "Layer query '%s' not valid. Invalid Query copied to Clipboard" % self.nameLayerSQL
-      msgBar.pushMessage( self.nameModulus, msg, QgsMessageBar.WARNING, 5 )
-    elif layer.featureCount() == 0L:
-      msg = "Not found register in Query '%s'!" % self.nameLayerSQL
+      msg = "Layer query '%s' not valid or no results. Query copied to Clipboard!" % self.nameLayerSQL
       msgBar.pushMessage( self.nameModulus, msg, QgsMessageBar.WARNING, 5 )
     else:
       msgBar.pushMessage( self.nameModulus, "Added %s" % self.nameLayerSQL, QgsMessageBar.INFO, 3 )
@@ -122,18 +119,21 @@ class AddLayerSQL():
     self._removeHighlight( 2 )
 
   def addLayer(self):
+    schema = sql = keyCol = table = ''
     prov = self.layerSrc.dataProvider()
     name =  prov.name()
     uriSrc = QgsDataSourceURI( prov.dataSourceUri() )
     uri = QgsDataSourceURI()
     if uriSrc.host() == '':
       uri.setDatabase( uriSrc.database() )
+      table = "( %s )" % self.select
     else:
       uri.setConnection( uriSrc.host(), uriSrc.port(), uriSrc.database(), uriSrc.username(), uriSrc.password() )
+      keyCol = '_uid_'
+      table = "( SELECT row_number() over () AS _uid_,* FROM ( %s ) AS _subq_1_ )" % self.select
 
-    uri.setDataSource( uriSrc.schema(), self.select, self.geomName )
+    uri.setDataSource( schema, table, self.geomName, sql, keyCol )
     self._addLayer( QgsVectorLayer( uri.uri(), self.nameLayerSQL, name ) )
-
 #
 sqlProperties = { 'layer_id': '[% @layer_id %]', 'geomWkt': '[%geomToWKT(  $geometry  )%]', 'select': select, 'geomName': geomName }
 layerSqlProperties = { 'name': layerSQL, 'fileStyle': fileStyle }

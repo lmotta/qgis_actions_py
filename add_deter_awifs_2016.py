@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 /***************************************************************************
-Name                 : Action SQL Model
-Description          : Model for Action when use the SQL.
+Name                 : Action Add Alerta AWIFs 2016
+Description          : Action Add Alerta AWIFs 2016 by SQL
 Date                 : February, 2016
 copyright            : (C) 2016 by Luiz Motta
 email                : motta.luiz@gmail.com
@@ -20,19 +20,26 @@ email                : motta.luiz@gmail.com
 """
 # CHANGE HERE for your target
 #
-feat_filter = '[% "FIELD" %]' # Selected field from action - 'Pair of single quotes' for STRING field!
+feat_filter = '[% "geocodigo" %]'
 #
-nameModulus = "ACTION NAME"
-layerSQL = "LAYER NAME_%s" % feat_filter # Example for STRING field '%s'
-fileStyle = '/PATH/STYLE NAME.qml'
-geomName = 'GEOM NAME'
-select = """(
-PUT HERE SQL CODE!
-...
-"table"."feat_filter" = '%s'
-...
-
-)""" % feat_filter
+nameModulus = "Action Add Alerta AWIFs 2016"
+layerSQL = "alerta_awifs_2016_%s" % feat_filter
+fileStyle = '/home/lmotta/data/qgis_qml/muni_alerta_awifs_2016.qml'
+geomName = 'shape'
+select = """
+SELECT
+  l.objectid,
+  l.mes, l.ano,l."data_imagem",
+  l.shape
+FROM 
+  "ibama"."alerta_awifs_2016_a" l
+INNER JOIN 
+  "cb"."lim_municipio_a" t
+ON
+  t.geocodigo = '%s' AND
+  l.shape && t.geom AND
+  ST_Intersects( l.shape, t.geom )
+""" % feat_filter
 #
 #
 # NOT CHANGE BELOW
