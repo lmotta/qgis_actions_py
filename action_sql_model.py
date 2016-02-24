@@ -26,7 +26,7 @@ nameModulus = "ACTION NAME"
 layerSQL = "LAYER NAME_%s" % feat_filter # Example for STRING field '%s'
 fileStyle = '/PATH/STYLE NAME.qml'
 geomName = 'GEOM NAME'
-select = """
+sql = """
 PUT HERE SQL CODE!
 ...
 "table"."feat_filter" = '%s'
@@ -37,33 +37,33 @@ PUT HERE SQL CODE!
 #
 # NOT CHANGE BELOW
 #
+import psycopg2
+from pyspatialite import dbapi2 as sqlite
+
 from PyQt4.QtCore import QTimer, QFileInfo
 from PyQt4.QtGui import QColor, QApplication
-from PyQt4.QtSql import QSqlDatabase, QSqlQuery
 
 import qgis
 from qgis.core import QgsDataSourceURI, QgsMapLayerRegistry, QgsSimpleLineSymbolLayerV2, QgsGeometry, QgsCoordinateTransform
 from qgis.gui import QgsRubberBand, QgsMessageBar
 
 class AddLayerSQL():
-  def __init__(self, nameModulus, sqlProperties, layerSqlProperties):
-    ( self.nameModulus, sqlProperties, layerSqlProperties ) =  ( nameModulus, sqlProperties, layerSqlProperties )
+  def __init__(self, nameModulus, sqlProperties, layerProperties):
+    self.nameModulus =  nameModulus
     #
     self.mlr = QgsMapLayerRegistry.instance()
     self.canvas = qgis.utils.iface.mapCanvas()
     self.msgBar = qgis.utils.iface.messageBar()
     #
-    geom = QgsGeometry.fromWkt( sqlProperties[ 'geomWkt' ] )
+    self.geom = QgsGeometry.fromWkt( sqlProperties[ 'geomWkt' ] )
     self.geomName = sqlProperties[ 'geomName' ]
-    self.select = sqlProperties['select']
+    self.sql = sqlProperties['sql']
     self.layerSrc = self.mlr.mapLayer( sqlProperties[ 'layer_id' ] )
     #
-    self.nameLayerSQL = layerSqlProperties[ 'name' ]
-    self.fileStyleLayerSQL = layerSqlProperties[ 'fileStyle' ]
-    #
-    self.rb = self._highlightGeom( geom )
+    self.nameLayerSQL = layerProperties[ 'name' ]
+    self.fileStyleLayerSQL = layerProperties[ 'fileStyle' ]
 
-  def _highlightGeom(self, geom):
+  def _addHighlightGeom(self):
     def highlight():
       rb = QgsRubberBand( self.canvas, QGis.Polygon)
       rb.setBorderColor( QColor( 255,  0, 0 ) )
@@ -75,97 +75,114 @@ class AddLayerSQL():
     crsCanvas = self.canvas.mapSettings().destinationCrs()
     crsLayer = self.layerSrc.crs()
     if not crsCanvas == crsLayer:
-      geomRB = QgsGeometry( geom )
+      geomRB = QgsGeometry( self.geom )
       ct = QgsCoordinateTransform( crsLayer, crsCanvas )
       geomRB.transform( ct )
     else:
-      geomRB = geom
+      geomRB = self.geom
 
     return highlight()
 
-  def _removeHighlight(self, seconds):
+  def _removeHighlightGeom(self, rb, seconds):
     def removeRB():
-      self.rb.reset( True )
-      self.canvas.scene().removeItem( self.rb )
+      rb.reset( True )
+      self.canvas.scene().removeItem( rb )
 
     QTimer.singleShot( seconds * 1000, removeRB )
 
-  def _addLayer(self, layer):
-    def addStyle():
+  def addLayer(self):
+    def connectPostgres( uri ):
+      tConn = ( uri.host(), uri.port(), uri.username(), uri.password(), uri.database() )
+      tConn = (u'10.1.8.58', u'5432', u'96328576749', u'lmotta&2015', u'siscom')
+      sConn = "host='%s' port='%s' user='%s' password='%s' dbname='%s'" % tConn
+      driver = psycopg2
+      return { 'driver': driver, 'conn': psycopg2.connect( sConn ) }
+
+    def connectSqlite( uri ):
+      sConn = uri.database()
+      driver = sqlite
+      return { 'driver': driver, 'conn': sqlite.connect( sConn ) }
+
+    def existFeatures():
+      drv_conn = f_connections[ name ]( uri )
+      cur = drv_conn['conn'].cursor()
+      #
+      msgError = None
+      try:
+        cur.execute( self.sql )
+      except drv_conn['driver'].Error as e:
+        msgError = e.message
+      #
+      if not msgError is None:
+        clip = QApplication.clipboard()
+        msg = "Error in query '%s'.\nError: %s\n\n%s" % ( self.nameLayerSQL, msgError, self.sql ) 
+        clip.setText( msg.decode( 'utf-8') )
+        msg = "Error in query '%s'. See Clipboard!" % self.nameLayerSQL
+        cur.close()
+        drv_conn['conn'].close()
+        return { 'isOk': False, 'msg': msg }
+      #
+      hasFeatures = False if cur.fetchone() is None else True
+      #
+      cur.close()
+      drv_conn['conn'].close()
+
+      return { 'isOk': True, 'hasFeatures': hasFeatures }
+
+    def addStyleLayerQuery():
       fileStyle = QFileInfo( self.fileStyleLayerSQL )
       if fileStyle.exists() and fileStyle.isFile():
-        layer.loadNamedStyle( self.fileStyleLayerSQL )
+        layerQuery.loadNamedStyle( self.fileStyleLayerSQL )
 
-    if not layer.isValid():
-      clip = QApplication.clipboard()
-      clip.setText( self.select )
-      msg = "Layer query '%s' not valid or no results. Query copied to Clipboard!" % self.nameLayerSQL
-      self.msgBar.pushMessage( self.nameModulus, msg, QgsMessageBar.WARNING, 5 )
-    else:
-      self.msgBar.pushMessage( self.nameModulus, "Added %s" % self.nameLayerSQL, QgsMessageBar.INFO, 3 )
-      addStyle()
-      self.mlr.addMapLayer( layer )
-
-    qgis.utils.iface.setActiveLayer( self.layerSrc )
-    self._removeHighlight( 2 )
-
-  def addLayer(self):
-    def existFeatures():
-      isOk = True
-      msgErroDB = "Error ready database '%s'" % uri.database() 
-      drive = qdrives[ name ]
-      db = QSqlDatabase.addDatabase( drive )
-      if not uri.host() == '':
-        db.setHostName( uri.host() )
-        db.setPort( int( uri.port() ) )
-        db.setUserName( uri.username() )
-        db.setPassword( uri.password() )
-      db.setDatabaseName( uri.database() )
-      isOk = db.open()
-      if not isOk:
-        return ( isOk, msgErroDB)
-      query = QSqlQuery( db )
-      isOk = query.exec_(  self.select )
-      if not isOk:
-        return ( isOk, msgErroDB)
-      bReturn = query.first()
-      db.close()
-
-      return ( isOk, bReturn )
-
-    qdrives = { 'postgres': 'QPSQL', 'spatialite': 'QSPATIALITE' }
-    schema = sql = keyCol = table = ''
+    f_connections = { 'postgres': connectPostgres, 'spatialite': connectSqlite }
     prov = self.layerSrc.dataProvider()
     name =  prov.name()
-    if not name in qdrives.keys():
+    if not name in f_connections.keys():
       msg = "Provider '%s' of layer '%s' is not supported!" % ( name, self.layerSrc.name() )
       self.msgBar.pushMessage( self.nameModulus, msg, QgsMessageBar.WARNING, 5 )
       return
 
-    uriSrc = QgsDataSourceURI( prov.dataSourceUri() )
-    uri = QgsDataSourceURI()
-    if uriSrc.host() == '':
-      uri.setDatabase( uriSrc.database() )
-      table = "( %s )" % self.select
+    keyCol = table = ''
+    uri = QgsDataSourceURI( prov.dataSourceUri() )
+    if uri.host() == '':
+      table = "( %s )" % self.sql
     else:
-      uri.setConnection( uriSrc.host(), uriSrc.port(), uriSrc.database(), uriSrc.username(), uriSrc.password() )
       keyCol = '_uid_'
-      table = "( SELECT row_number() over () AS _uid_,* FROM ( %s ) AS _subq_1_ )" % self.select
+      table = "( SELECT row_number() over () AS _uid_,* FROM ( %s ) AS _subq_1_ )" % self.sql
 
-    ( isOk, result ) = existFeatures()
-    if not isOk:
-      self.msgBar.pushMessage( self.nameModulus, result, QgsMessageBar.WARNING, 5 )
+    result = existFeatures()
+    if not result['isOk']:
+      rb = self._addHighlightGeom()
+      self.msgBar.pushMessage( self.nameModulus, result['msg'], QgsMessageBar.WARNING, 5 )
+      self._removeHighlightGeom( rb, 5 )
       return
-    if not result:
-      msg = "Not found result for query '%s'!" % self.nameLayerSQL
+    if not result['hasFeatures']:
+      rb = self._addHighlightGeom()
+      msg = "Not found features in query '%s'!"  % self.nameLayerSQL
       self.msgBar.pushMessage( self.nameModulus, msg, QgsMessageBar.WARNING, 5 )
+      self._removeHighlightGeom( rb, 5 )
       return
 
-    uri.setDataSource( schema, table, self.geomName, sql, keyCol )
-    self._addLayer( QgsVectorLayer( uri.uri(), self.nameLayerSQL, name ) )
+    schema = filter_sql = ''
+    uri.setDataSource( schema, table, self.geomName, filter_sql, keyCol )
+    layerQuery = QgsVectorLayer( uri.uri(), self.nameLayerSQL, name )
+    if not layerQuery.isValid(): # Never happing?
+      rb = self._addHighlightGeom()
+      msg = "Layer query '%s' not valid!" % self.nameLayerSQL
+      self.msgBar.pushMessage( self.nameModulus, msg, QgsMessageBar.WARNING, 5 )
+      self._removeHighlightGeom( rb, 2 )
+      return
+
+    msg = "Added %s (total %s)" % ( self.nameLayerSQL, layerQuery.featureCount() )
+    self.msgBar.pushMessage( self.nameModulus, msg, QgsMessageBar.INFO, 3 )
+    rb = self._addHighlightGeom()
+    addStyleLayerQuery()
+    self.mlr.addMapLayer( layerQuery )
+    qgis.utils.iface.setActiveLayer( self.layerSrc )
+    self._removeHighlightGeom( rb, 2 )
 #
-sqlProperties = { 'layer_id': '[% @layer_id %]', 'geomWkt': '[%geomToWKT(  $geometry  )%]', 'select': select, 'geomName': geomName }
-layerSqlProperties = { 'name': layerSQL, 'fileStyle': fileStyle }
+sqlProperties = { 'layer_id': '[% @layer_id %]', 'geomWkt': '[%geomToWKT(  $geometry  )%]', 'sql': sql, 'geomName': geomName }
+layerProperties = { 'name': layerSQL, 'fileStyle': fileStyle }
 #
-alq = AddLayerSQL( nameModulus, sqlProperties, layerSqlProperties )
+alq = AddLayerSQL( nameModulus, sqlProperties, layerProperties )
 alq.addLayer()
