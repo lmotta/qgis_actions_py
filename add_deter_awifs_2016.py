@@ -100,7 +100,6 @@ class AddLayerSQL():
   def addLayer(self):
     def connectPostgres( uri ):
       tConn = ( uri.host(), uri.port(), uri.username(), uri.password(), uri.database() )
-      tConn = (u'10.1.8.58', u'5432', u'96328576749', u'lmotta&2015', u'siscom')
       sConn = "host='%s' port='%s' user='%s' password='%s' dbname='%s'" % tConn
       driver = psycopg2
       return { 'driver': driver, 'conn': psycopg2.connect( sConn ) }
