@@ -1,8 +1,8 @@
-# -*- coding: utf-8 -*-
+#
 """
 /***************************************************************************
-Name                 : Action SQL Model
-Description          : Model for Action when use the SQL.
+Name                 : AddLayerSQL
+Description          : Class for add Layer by SQL use for Action in QGIS.
 Date                 : February, 2016
 copyright            : (C) 2016 by Luiz Motta
 email                : motta.luiz@gmail.com
@@ -18,24 +18,6 @@ email                : motta.luiz@gmail.com
  *                                                                         *
  ***************************************************************************/
 """
-# CHANGE HERE for your target
-#
-feat_filter = '[% "FIELD" %]' # Selected field from action - 'Pair of single quotes' for STRING field!
-#
-nameModulus = "ACTION NAME"
-layerSQL = "LAYER NAME_%s" % feat_filter # Example for STRING field '%s'
-fileStyle = '/PATH/STYLE NAME.qml'
-geomName = 'GEOM NAME'
-sql = """
-PUT HERE SQL CODE!
-...
-"table"."feat_filter" = '%s'
-...
-
-""" % feat_filter
-#
-#
-# NOT CHANGE BELOW
 #
 import psycopg2
 from pyspatialite import dbapi2 as sqlite
