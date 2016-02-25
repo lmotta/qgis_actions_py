@@ -35,7 +35,7 @@ Luiz Motta
   * feat_filter: Field from layer where use in SQL (use double quotes for String type)
   * nameModulus: Name this action for display in Message Bar
   * layerSQL: Name of layer that will be created by Action (use value of feat_filter)
-  * style: Name of style, can be a None, QML file or 'layer_styles' table and the 'styleQML' field
+  * style: Name of style, can be a None, QML file or the name of style in 'layer_styles' table and the 'styleQML' field
   * geomName: Name of geometry field in SELECT
   * sql: SQL with query, see type of filter field 
 
@@ -46,9 +46,9 @@ Luiz Motta
 * Example for Spatialite
 
 ## Changelog
-- 2016-02-22
- Initial scripts for SQL Query
 - 2016-02-24
  Add style in DB
+- 2016-02-22
+ Initial scripts for SQL Query
  
 
