@@ -26,13 +26,16 @@ Luiz Motta
 * Example: ./create_action header_add_landsat.py
 * After run this script, paste code in Action property of layer
 
+### test_console.py
+* Test Class AddLayerSQL in console QGIS
+
 ### model_action_add.py
 * Model for define Header
 * Variables:
   * feat_filter: Field from layer where use in SQL (use double quotes for String type)
   * nameModulus: Name this action for display in Message Bar
   * layerSQL: Name of layer that will be created by Action (use value of feat_filter)
-  * fileStyle: Name of style file for layer
+  * style: Name of style, can be a None, QML file or 'layer_styles' table and the 'styleQML' field
   * geomName: Name of geometry field in SELECT
   * sql: SQL with query, see type of filter field 
 
@@ -45,4 +48,7 @@ Luiz Motta
 ## Changelog
 - 2016-02-22
  Initial scripts for SQL Query
+- 2016-02-24
+ Add style in DB
+ 
 
