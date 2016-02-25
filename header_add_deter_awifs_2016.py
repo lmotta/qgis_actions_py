@@ -2,7 +2,7 @@ feat_filter = '[% "geocodigo" %]'
 #
 nameModulus = "Action Add Alerta AWIFs 2016"
 layerSQL = "alerta_awifs_2016_%s" % feat_filter
-fileStyle = '/home/lmotta/data/qgis_qml/muni_alerta_awifs_2016.qml'
+style = "/home/lmotta/data/qgis_actions/data/deter_awifs.qml"
 geomName = 'shape'
 sql = """
 SELECT

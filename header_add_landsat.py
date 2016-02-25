@@ -2,7 +2,7 @@ feat_filter = '[% "geocodmu" %]' # Value from action "geocodmu" is STRING!
 #
 nameModulus = "Action Add Landsat"
 layerSQL = "landsat_muni_%s" % feat_filter
-fileStyle = '/home/lmotta/data/qgis_qml/muni_landsat.qml'
+style = 'add_landsat'
 geomName = 'geom'
 sql = """
 SELECT

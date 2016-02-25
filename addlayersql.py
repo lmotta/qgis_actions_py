@@ -19,6 +19,8 @@ email                : motta.luiz@gmail.com
  ***************************************************************************/
 """
 #
+import codecs, os
+
 import psycopg2
 from pyspatialite import dbapi2 as sqlite
 
@@ -26,7 +28,11 @@ from PyQt4.QtCore import QTimer, QFileInfo
 from PyQt4.QtGui import QColor, QApplication
 
 import qgis
-from qgis.core import QgsDataSourceURI, QgsMapLayerRegistry, QgsSimpleLineSymbolLayerV2, QgsGeometry, QgsCoordinateTransform
+from qgis.core import (
+    QgsApplication,
+    QgsDataSourceURI, QgsMapLayerRegistry,
+    QgsGeometry, QgsCoordinateTransform
+)
 from qgis.gui import QgsRubberBand, QgsMessageBar
 
 class AddLayerSQL():
@@ -43,7 +49,7 @@ class AddLayerSQL():
     self.layerSrc = self.mlr.mapLayer( sqlProperties[ 'layer_id' ] )
     #
     self.nameLayerSQL = layerProperties[ 'name' ]
-    self.fileStyleLayerSQL = layerProperties[ 'fileStyle' ]
+    self.styleLayerSQL = layerProperties[ 'style' ]
 
   def _addHighlightGeom(self):
     def highlight():
@@ -74,34 +80,54 @@ class AddLayerSQL():
 
   def addLayer(self):
     def connectPostgres( uri ):
+      tableStyle = 'layer_styles'
       tConn = ( uri.host(), uri.port(), uri.username(), uri.password(), uri.database() )
       sConn = "host='%s' port='%s' user='%s' password='%s' dbname='%s'" % tConn
       driver = psycopg2
-      return { 'driver': driver, 'conn': psycopg2.connect( sConn ) }
+      sql = "SELECT EXISTS( SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '%s' )" % tableStyle
+      return { 
+        'driver': driver,
+        'conn': psycopg2.connect( sConn ),
+        'sqlStyleTable': sql,
+        'tableStyle': tableStyle
+      }
 
     def connectSqlite( uri ):
+      tableStyle = 'layer_styles'
       sConn = uri.database()
       driver = sqlite
-      return { 'driver': driver, 'conn': sqlite.connect( sConn ) }
+      sql = "SELECT name FROM sqlite_master WHERE type='table' AND name='%s'" % tableStyle
+      return { 
+        'driver': driver,
+        'conn': sqlite.connect( sConn ),
+        'sqlStyleTable': sql,
+        'tableStyle': tableStyle
+      }
 
-    def existFeatures():
-      drv_conn = f_connections[ name ]( uri )
-      cur = drv_conn['conn'].cursor()
-      #
+    def runSQL(sql, cur, drv_conn):
       msgError = None
       try:
-        cur.execute( self.sql )
+        cur.execute( sql )
       except drv_conn['driver'].Error as e:
         msgError = e.message
       #
       if not msgError is None:
         clip = QApplication.clipboard()
-        msg = "Error in query '%s'.\nError: %s\n\n%s" % ( self.nameLayerSQL, msgError, self.sql ) 
+        msg = "Error in query '%s'.\nError: %s\n\n%s" % ( self.nameLayerSQL, msgError, sql ) 
         clip.setText( msg.decode( 'utf-8') )
         msg = "Error in query '%s'. See Clipboard!" % self.nameLayerSQL
         cur.close()
         drv_conn['conn'].close()
         return { 'isOk': False, 'msg': msg }
+      return { 'isOk': True }
+
+    def existFeatures():
+      drv_conn = f_connections[ name ]( uri )
+      cur = drv_conn['conn'].cursor()
+      #
+      result = runSQL( self.sql, cur, drv_conn )
+      if not result['isOk']:
+        return result
       #
       hasFeatures = False if cur.fetchone() is None else True
       #
@@ -111,9 +137,66 @@ class AddLayerSQL():
       return { 'isOk': True, 'hasFeatures': hasFeatures }
 
     def addStyleLayerQuery():
-      fileStyle = QFileInfo( self.fileStyleLayerSQL )
+      def getStyleDB():
+        drv_conn = f_connections[ name ]( uri )
+        cur = drv_conn['conn'].cursor()
+        #
+        result = runSQL( drv_conn[ 'sqlStyleTable' ], cur, drv_conn )
+        if not result[ 'isOk']:
+          return result
+        #
+        hasTable = False if cur.fetchone() is None else True
+        if hasTable is None:
+          data = ( self.nameLayerSQL, drv_conn[ 'tableStyle' ] )
+          msg = "Error in query '%s' (for verify style). Not exist table '%s'!" % data
+          return { 'isOk': True, 'exits': False, 'msg': msg }
+        #
+        data = ( drv_conn[ 'tableStyle' ], self.styleLayerSQL )
+        sql = "SELECT styleQML FROM %s WHERE styleName = '%s'" % data
+        result = runSQL( sql, cur, drv_conn )
+        if not result[ 'isOk']:
+          return result
+        #
+        value = cur.fetchone()
+        if value is None:
+          data = ( self.nameLayerSQL, self.styleLayerSQL, rv_conn[ 'tableStyle' ] )
+          msg = "Error in query '%s' (for verify style). Not exist style '%s' in table '%s'!" % data
+          return { 'isOk': True, 'exits': False, 'msg': msg }
+        #
+        cur.close()
+        drv_conn['conn'].close()
+        #
+        return { 'isOk': True, 'exits': True, 'qml': value[0] }
+        #
+
+      def setStyleLayer(qml):
+        qmlFile = "%saddlayersql_action_temp.qml" % ( QgsApplication.qgisSettingsDirPath() )
+        if os.path.exists(qmlFile):
+          os.remove( qmlFile )
+        f = codecs.open( qmlFile, 'w', encoding='utf8')
+        f.write( qml )
+        f.close()
+        #
+        layerQuery.loadNamedStyle( qmlFile )
+        #
+        os.remove( qmlFile )
+
+      if self.styleLayerSQL is None:
+        return
+      # File
+      fileStyle = QFileInfo( self.styleLayerSQL )
       if fileStyle.exists() and fileStyle.isFile():
-        layerQuery.loadNamedStyle( self.fileStyleLayerSQL )
+        layerQuery.loadNamedStyle( self.styleLayerSQL )
+        return
+      # DB *** Had self.styleLayerSQL and not is file -> Need be a DB
+      result = getStyleDB()
+      if not result['isOk'] or not result['exits']:
+        rb = self._addHighlightGeom()
+        self.msgBar.pushMessage( self.nameModulus, result['msg'], QgsMessageBar.WARNING, 5 )
+        self._removeHighlightGeom( rb, 5 )
+        return
+      #
+      setStyleLayer( result['qml'] )
 
     f_connections = { 'postgres': connectPostgres, 'spatialite': connectSqlite }
     prov = self.layerSrc.dataProvider()
@@ -162,8 +245,13 @@ class AddLayerSQL():
     qgis.utils.iface.setActiveLayer( self.layerSrc )
     self._removeHighlightGeom( rb, 2 )
 #
-sqlProperties = { 'layer_id': '[% @layer_id %]', 'geomWkt': '[%geomToWKT(  $geometry  )%]', 'sql': sql, 'geomName': geomName }
-layerProperties = { 'name': layerSQL, 'fileStyle': fileStyle }
+sqlProperties = { 
+  'layer_id': '[% @layer_id %]', 
+  'geomWkt': '[%geomToWKT(  $geometry  )%]',
+  'sql': sql,
+  'geomName': geomName
+}
+layerProperties = { 'name': layerSQL, 'style': style }
 #
 alq = AddLayerSQL( nameModulus, sqlProperties, layerProperties )
 alq.addLayer()
